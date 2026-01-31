@@ -51,7 +51,7 @@ int main()
 		frame++; frame %= 31416;
 	}
 	EasyTGL::shut();
-	printf("%f", timer.to_second(timer.elapsed()));
+	printf("%f", EasyTime::to_second(timer.elapsed()));
 }
 //optimized : 13.45s
 //without optimize : 43s
