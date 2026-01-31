@@ -2,7 +2,12 @@
 
 /* Platforms Supported : Windows, Linux*/
 #define EASYTGL_PLATFORM "Windows"
-#define EASYTGL_DEFAULT_BUFFER_SIZE 65536*1024
+#ifndef EASYTGL_THREAD_NUM
+#define EASYTGL_THREAD_NUM 16
+#endif
+#define EASYTGL_USE_OUTPUT_BUFFER true
+#define EASYTGL_DEFAULT_MAIN_BUFFER_SIZE 65536*2048
+#define EASYTGL_DEFAULT_frame_buffer_SIZE 65536*1024
 
 #include <map>
 #include <string>
@@ -96,9 +101,9 @@ namespace EasyTGL {
 	#pragma region RGB
 	struct rgb
 	{
-		int r, g, b;
-		rgb() { r = 0, g = 0, b = 0; }
-		rgb(int r, int g, int b) : r(r), g(g), b(b) {};
+		uint8_t r, g, b, a;
+		rgb() = default;
+		rgb(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 0) : r(r), g(g), b(b), a(a) { return; }
 	};
 	bool operator == (const rgb& a, const rgb& b)
 	{
@@ -125,46 +130,37 @@ namespace EasyTGL {
 	};
 #pragma endregion
 	using std::shared_ptr, std::vector, std::is_same_v;
+	vector<char> MAIN_BUFFER(EASYTGL_DEFAULT_MAIN_BUFFER_SIZE);
 
-	struct vertex
+	void init(uint32_t main_buffer_size = EASYTGL_DEFAULT_MAIN_BUFFER_SIZE)
 	{
-		vec3 pos;
-		vec2 uv;
-		rgb color;
-	};
+		MAIN_BUFFER.reserve(main_buffer_size);
+		MAIN_BUFFER.resize(main_buffer_size);
+		setvbuf(stdout, MAIN_BUFFER.data(), _IOLBF, EASYTGL_DEFAULT_MAIN_BUFFER_SIZE);	// 设置终端的自定义输出缓冲区
+		return;
+	}
 
-	struct vertex_buffer
-	{
-	public:
-		void add(const shared_ptr<vertex>& v)
-		{
-			buffer.push_back(v);
-			return;
-		}
-	private:
-		std::vector<shared_ptr<vertex> > buffer;
-	};
 	#pragma region Screen
 	// screen中像素坐标以(0,0)为最左上角
 	class screen
 	{
 	public:
-		screen(int _width, int _height, int pos_x = 1, int pos_y = 1, int _pixel_width = 2, uint32_t buffer_size = EASYTGL_DEFAULT_BUFFER_SIZE)
+		screen(int _width, int _height, int pos_x = 1, int pos_y = 1, int _pixel_width = 2, uint32_t buffer_size = EASYTGL_DEFAULT_frame_buffer_SIZE)
 		{
-			_text_buffer.resize(buffer_size);	// 自定义输出缓冲区大小
-			memset(_text_buffer.data(), 0, _text_buffer.size() * sizeof(char));
-			setvbuf(stdout, _text_buffer.data(), _IOFBF, _text_buffer.size());	// 设置终端的自定义输出缓冲区
+			//_text_buffer.resize(buffer_size);	// 自定义输出缓冲区大小
+			//memset(_text_buffer.data(), 0, _text_buffer.size() * sizeof(char));
+			//setvbuf(stdout, _text_buffer.data(), _IOLBF, _text_buffer.size());	// 设置终端的自定义输出缓冲区
 
 			this->width = _width;
 			this->height = _height;
 			this->pixel_width = _pixel_width;
 			this->basic_pixel = new char[pixel_width + 1];
 			this->global_pos = vec2i(pos_x, pos_y);
-			this->screen_buffer.resize(_width * _height);
-			this->lastframe_screen_buffer.clear();
+			this->frame_buffer.resize(_width * _height);
+			this->lastframe_frame_buffer.clear();
 			for (int i = 0; i < pixel_width; i++) basic_pixel[i] = ' ';
 			basic_pixel[pixel_width] = '\0';
-			this->clear();
+			this->fast_clear();
 			return;
 		}
 		~screen()
@@ -177,12 +173,12 @@ namespace EasyTGL {
 		inline void draw_pixel(const vec2i& point, const rgb& color)
 		{
 			if (!in_screen(point)) return;
-			screen_buffer[point.x + point.y * width] = color;
+			frame_buffer[point.x + point.y * width] = color;
 			return;
 		}
 		inline void draw_pixel_without_check(const vec2i& point, const rgb& color)
 		{
-			screen_buffer[point.x + point.y * width] = color;
+			frame_buffer[point.x + point.y * width] = color;
 			return;
 		}
 		void draw_line(const vec2i& _p1, const vec2i& _p2, const rgb& color)
@@ -271,24 +267,31 @@ namespace EasyTGL {
 		}
 		void display(bool all_redraw = false)
 		{
+			auto put_pixel = [&](const int& x, const int& y, const rgb& color) -> void
+				{
+					printf(
+						"\033[%d;%dH\033[48;2;%d;%d;%dm%s",
+						global_pos.y + y,
+						global_pos.x + x,
+						color.r, color.g, color.b,
+						basic_pixel
+					);
+					return;
+				};
 			printf("\033[0m");
 			if (all_redraw) {
 				//printf("\033[%d;%dH", global_pos_y, global_pos_x);
 				for (int idx = 0; idx < width * height; idx++) {
 					//printf("\033[%d;%dH", global_pos.y + (idx / width), global_pos.x + (idx % width) * pixel_width);
-					//printf("\033[48;2;%d;%d;%dm%s", screen_buffer[idx].r, screen_buffer[idx].g, screen_buffer[idx].b, basic_pixel);
-					printf(
-						"\033[%d;%dH\033[48;2;%d;%d;%dm%s",
-						global_pos.y + (idx / width),
-						global_pos.x + (idx % width) * pixel_width,
-						screen_buffer[idx].r,
-						screen_buffer[idx].g,
-						screen_buffer[idx].b,
-						basic_pixel
+					//printf("\033[48;2;%d;%d;%dm%s", frame_buffer[idx].r, frame_buffer[idx].g, frame_buffer[idx].b, basic_pixel);
+					put_pixel(
+						idx / width,
+						(idx % width) * pixel_width,
+						frame_buffer[idx]
 					);
 				}
-				lastframe_screen_buffer = screen_buffer;
-				//std::swap(lastframe_screen_buffer, screen_buffer);
+				lastframe_frame_buffer = frame_buffer;
+				//std::swap(lastframe_frame_buffer, frame_buffer);
 			}
 			else {
 				std::vector<int> difference = get_difference();
@@ -296,14 +299,14 @@ namespace EasyTGL {
 					int idx = difference[i];
 					int x = idx % width;
 					int y = idx / width;
-					rgb* color = &screen_buffer[idx];
+					rgb* color = &frame_buffer[idx];
 
 					printf("\033[%d;%dH", global_pos.y + y, global_pos.x + x * pixel_width);
-					if (i == 0 or screen_buffer[difference[i - 1]] != *color) {
+					if (i == 0 or frame_buffer[difference[i - 1]] != *color) {
 						printf("\033[48;2;%d;%d;%dm", color->r, color->g, color->b);
 					}
 					printf("%s", basic_pixel);
-					lastframe_screen_buffer[idx] = screen_buffer[idx];
+					lastframe_frame_buffer[idx] = frame_buffer[idx];
 				}
 			}
 			fflush(stdout);
@@ -334,29 +337,28 @@ namespace EasyTGL {
 #pragma endregion
 		image capture()
 		{
-			return image(width, height, screen_buffer);
+			return image(width, height, frame_buffer);
 		}
 		void clear(rgb color = rgb(0, 0, 0))
 		{
-			for (int i = 0; i < screen_buffer.size(); i++) {
-				screen_buffer[i] = color;
+			for (int i = 0; i < frame_buffer.size(); i++) {
+				frame_buffer[i] = color;
 			}
 		}
 		void fast_clear()
 		{
-			memset(screen_buffer.data(), 0x00, sizeof(rgb) * screen_buffer.size());
+			memset(frame_buffer.data(), 0x00, sizeof(rgb) * frame_buffer.size());
 			return;
 		}
 
 	//private:
-		std::vector<char> _text_buffer;
+		std::vector<char> screen_buffer;
 		vec2i global_pos;	// 窗口左上角在命令行中的全局位置从(1,1)开始
 		int width, height;	// 窗口的宽和高
-		int pixel_width;	// 像素的宽度(单位 字符)
-		// 像素高度固定为1个字符
+		int pixel_width;	// 像素的宽度(单位 字符) (像素高度固定为1个字符)
 		char* basic_pixel;	// 一个逻辑像素的图元(字符串)
-		std::vector<rgb> screen_buffer;
-		std::vector<rgb> lastframe_screen_buffer;
+		std::vector<rgb> frame_buffer;	// 当前帧
+		std::vector<rgb> lastframe_frame_buffer;	// 上一帧
 
 		float calc_slope(float dx, float dy)
 		{
@@ -413,13 +415,15 @@ namespace EasyTGL {
 		std::vector<int> get_difference()
 		{
 			std::vector<int> result;
-			for (int i = 0; i < screen_buffer.size(); i++) {
-				if (i >= lastframe_screen_buffer.size()) {
+			result.reserve(width * height);
+			//#pragma omp parallel for num_threads(a)
+			for (int i = 0; i < frame_buffer.size(); i++) {
+				if (i >= lastframe_frame_buffer.size()) {
 					result.push_back(i);
-					lastframe_screen_buffer.push_back(rgb());
+					lastframe_frame_buffer.push_back(rgb());
 					continue;
 				}
-				if (screen_buffer[i] != lastframe_screen_buffer[i]) {
+				if (frame_buffer[i] != lastframe_frame_buffer[i]) {
 					result.push_back(i);
 					//printf("\033[0m1111111111111111");
 				}
