@@ -9,7 +9,7 @@ namespace EasyTime {
 	public:
 		timer() { restart(); }
 		void restart() { start_stamp = getTime(); }
-		float to_second(long long milliseconds) const { return milliseconds * 0.01; }
+		float to_second(long long milliseconds) const { return milliseconds * 0.001; }
 		long long elapsed() const { return getTime() - start_stamp; }
 		static void sleep(double time/*√Î*/) { sleep_milliseconds(time * 1e3); }
 		static void sleep_milliseconds(long long time/*∫¡√Î*/)

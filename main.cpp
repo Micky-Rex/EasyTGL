@@ -18,15 +18,16 @@ using EasyTGL::vec2, EasyTGL::vec2i, EasyTGL::rgb;
 
 int main()
 {
+	EasyTGL::init();
 	EasyTime::timer timer;
 	timer.restart();
 	//(void)getchar();
-	EasyTGL::screen scr(960, 320);	// ³¬´ó³ÔÅäÖÃ
-	//EasyTGL::screen scr(960, 320);
+	EasyTGL::screen scr(400, 320);
+	EasyTGL::screen scr2(560, 320, 400*2);
+	//EasyTGL::screen scr(960, 320);	// ³¬´ó³ÔÅäÖÃ
 	//EasyTGL::screen scr(128, 74);	// ¹öÂÖËõÐ¡ËÄ´Î£¬ÖÕ¶ËÈ«ÆÁ
 	//EasyTGL::screen scr(160, 90);	// ¹öÂÖËõÐ¡ËÄ´Î£¬ÖÕ¶ËÈ«ÆÁ
 	EasyTGL::clear_all();
-
 	int frame = 1, x = 0;
 	//while (true) {
 	//	x = sin(frame * 0.001) * 100;
@@ -35,13 +36,31 @@ int main()
 	//	scr.display();
 	//	frame++; frame %= 31416;
 	//}
-	while (true) {
-		x = sin(frame * 0.001) * 100;
+	while (frame >= 1) {
+		x = sin(frame * 0.0005) * 100;
 		//scr.clear(rgb(0, 0, 0));
 		scr.fast_clear();
 		scr.draw_line(vec2i(x * 1.5, x * 0.4), vec2i(x + 1000, x + 500), rgb(255, 170, 0));
-		scr.draw_triangle(vec2i(100 + x, 20 - x * 0.5), vec2i(200 + x * 0.1, 190 + x), vec2i(340 - x * 1.2, 50), rgb(255, 255, 255));
+		scr.draw_triangle(vec2i(100 + x, 20 - x * 0.5), vec2i(200 + x * 0.1, 150 + x), vec2i(340 - x * 1.2, 50), rgb(255, 255, 255));
 		scr.display();
+
+		scr2.fast_clear();
+		scr2.draw_line(vec2i(x * 1.5, x * 0.4), vec2i(x + 1000, x + 500), rgb(255, 170, 0));
+		scr2.draw_triangle(vec2i(100 + x, 20 - x * 0.5), vec2i(200 + x * 0.1, 150 + x), vec2i(340 - x * 1.2, 50), rgb(255, 255, 255));
+		scr2.display();
 		frame++; frame %= 31416;
 	}
+	EasyTGL::shut();
+	printf("%f", timer.to_second(timer.elapsed()));
 }
+//optimized : 13.45s
+//without optimize : 43s
+
+
+
+
+
+
+
+
+
