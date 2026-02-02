@@ -4,7 +4,7 @@
 #include <thread>
 #include <algorithm>
 namespace EasyTime {
-	float to_second(long long milliseconds);
+	double to_second(long long milliseconds);
 	struct timer
 	{
 	public:
@@ -35,7 +35,7 @@ namespace EasyTime {
 #ifdef EASYTIME_IMPLEMENTATION
 #undef EASYTIME_IMPLEMENTATION
 namespace EasyTime {
-	float to_second(long long milliseconds) {
+	double to_second(long long milliseconds) {
 		return milliseconds * 0.001;
 	}
 	timer::timer() {

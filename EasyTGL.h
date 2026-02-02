@@ -91,7 +91,21 @@ namespace EasyTGL {
 		uint8_t r, g, b, a;
 		rgb() = default;
 		rgb(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 0);
+		static const rgb white;
+		static const rgb black;
+		static const rgb red;
+		static const rgb green;
+		static const rgb blue;
+		static const rgb orange;
+		static const rgb light_yellow;
 	};
+	inline const rgb rgb::white = rgb(255, 255, 255);
+	inline const rgb rgb::black = rgb(0, 0, 0);
+	inline const rgb rgb::red = rgb(255, 0, 0);
+	inline const rgb rgb::green = rgb(0, 255, 0);
+	inline const rgb rgb::blue = rgb(0, 0, 255);
+	inline const rgb rgb::orange = rgb(255, 170, 0);
+	inline const rgb rgb::light_yellow = rgb(255, 255, 0);
 	bool operator == (const rgb& a, const rgb& b);
 	bool operator != (const rgb& a, const rgb& b);
 
@@ -246,7 +260,7 @@ namespace EasyTGL {
 		* @brief 清除视口的绘图缓冲区
 		* @param color 清屏的背景颜色(RGB), 只支持RGB三通道, 不包括alpha通道
 		*/
-		void clear(rgb color = rgb(0, 0, 0));
+		void clear(rgb color = rgb::black);
 
 
 		/*
@@ -256,6 +270,7 @@ namespace EasyTGL {
 
 	private:
 		string screen_buffer;	///< 视口的输出缓冲区, 绘制像素的控制码输出于此
+		//string text_buffer;	///< 视口的输出缓冲区, 绘制文字的控制码输出于此, 此缓冲区内所有内容将在screen_buffer刷新后处理, 即绘制的文字必定覆盖画面
 		vec2i global_pos;	///< 视口左上角相对于终端左上角的全局位置, 从(1,1)开始
 		int width, height;	///< 视口的宽和高(单位 像素)
 		int pixel_width;	///< 像素的宽度(单位 字符) (像素高度固定为1个字符)
@@ -522,7 +537,6 @@ namespace EasyTGL {
 	}
 	void screen::display(bool all_redraw)
 	{
-		screen_buffer = "";
 		screen_buffer.reserve(EASYTGL_DEFAULT_FRAME_BUFFER_SIZE);
 		/*
 		* @brief lambda表达式 绘制像素到屏幕缓冲区
@@ -582,7 +596,10 @@ namespace EasyTGL {
 			}
 		}
 		fwrite(screen_buffer.data(), sizeof(char), screen_buffer.size(), stdout);
+		//fwrite(text_buffer.data(), sizeof(char), text_buffer.size(), stdout);
 		fflush(stdout);
+		screen_buffer = "";
+		//text_buffer = "";
 		return;
 	}
 	inline bool screen::in_screen(const vec2i& p)
