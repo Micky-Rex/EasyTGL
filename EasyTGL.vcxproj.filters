@@ -24,4 +24,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" />
+    <None Include="README.cn.md" />
+    <None Include="README.en.md" />
+  </ItemGroup>
 </Project>

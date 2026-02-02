@@ -11,8 +11,11 @@
 找到这段代码在Windows上运行的平替，要求必须无第三方依赖，允许使用Windows的API，不强制
 
 */
+#define EASYTGL_IMPLEMENTATION
+#define EASYTIME_IMPLEMENTATION
+
 #include "EasyTGL.h"
-#include "timer.h"
+#include "EasyTime.h"
 
 using EasyTGL::vec2, EasyTGL::vec2i, EasyTGL::rgb;
 
@@ -22,8 +25,8 @@ int main()
 	EasyTime::timer timer;
 	timer.restart();
 	//(void)getchar();
-	EasyTGL::screen scr(400, 320);
-	EasyTGL::screen scr2(560, 320, 400*2);
+	EasyTGL::screen scr(600, 220);
+	//EasyTGL::screen scr2(560, 320, 400*2);
 	//EasyTGL::screen scr(960, 320);	// 超大吃配置
 	//EasyTGL::screen scr(128, 74);	// 滚轮缩小四次，终端全屏
 	//EasyTGL::screen scr(160, 90);	// 滚轮缩小四次，终端全屏
@@ -36,18 +39,19 @@ int main()
 	//	scr.display();
 	//	frame++; frame %= 31416;
 	//}
-	while (frame >= 1) {
+	while (true/*frame >= 1*/) {
 		x = sin(frame * 0.0005) * 100;
 		//scr.clear(rgb(0, 0, 0));
 		scr.fast_clear();
 		scr.draw_line(vec2i(x * 1.5, x * 0.4), vec2i(x + 1000, x + 500), rgb(255, 170, 0));
 		scr.draw_triangle(vec2i(100 + x, 20 - x * 0.5), vec2i(200 + x * 0.1, 150 + x), vec2i(340 - x * 1.2, 50), rgb(255, 255, 255));
-		scr.display();
+		scr.draw_pixel(vec2i(frame, 0), rgb(0, 255, 255));
+		scr.display(true);
 
-		scr2.fast_clear();
-		scr2.draw_line(vec2i(x * 1.5, x * 0.4), vec2i(x + 1000, x + 500), rgb(255, 170, 0));
-		scr2.draw_triangle(vec2i(100 + x, 20 - x * 0.5), vec2i(200 + x * 0.1, 150 + x), vec2i(340 - x * 1.2, 50), rgb(255, 255, 255));
-		scr2.display();
+		//scr2.fast_clear();
+		//scr2.draw_line(vec2i(x * 1.5, x * 0.4), vec2i(x + 1000, x + 500), rgb(255, 170, 0));
+		//scr2.draw_triangle(vec2i(100 + x, 20 - x * 0.5), vec2i(200 + x * 0.1, 150 + x), vec2i(340 - x * 1.2, 50), rgb(255, 255, 255));
+		//scr2.display();
 		frame++; frame %= 31416;
 	}
 	EasyTGL::shut();
