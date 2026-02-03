@@ -28,8 +28,8 @@ int main()
 	//EasyTGL::screen scr(60, 22);
 	//EasyTGL::screen scr2(560, 320, 400*2);
 	//EasyTGL::screen scr(1410, 520);	// 超大吃配置
-	//EasyTGL::screen scr(960, 320);	// 超大吃配置
-	EasyTGL::screen scr(128, 74);	// 滚轮缩小四次，终端全屏(或从最小放大六次)
+	EasyTGL::screen scr(960, 320);	// 超大吃配置
+	//EasyTGL::screen scr(128, 74);	// 滚轮缩小四次，终端全屏(或从最小放大六次)
 	EasyTGL::clear_all();
 	int frame = 1, x = 0;
 	double current_frame_time = EasyTime::to_second(timer.getTime()), last_frame_time = EasyTime::to_second(timer.getTime()), delta_time = 0.f;
@@ -46,7 +46,13 @@ int main()
 		scr.fast_clear();
 		scr.draw_line(vec2i(x * 1.5, x * 0.4), vec2i(x + 1000, x + 500), rgb::orange);
 		scr.draw_triangle(vec2i(100 + x, 20 - x * 0.5), vec2i(200 + x * 0.1, 150 + x), vec2i(340 - x * 1.2, 50), rgb::white);
-		scr.draw_pixel(vec2i(frame, 0), rgb::red);
+
+		//scr.draw_triangle(vec2i(0, 0), vec2i(60 + x, 300 - 0.1 * x), vec2i(1200 + x * 0.2, 20 + 0.7 * x), rgb::white);
+		scr.draw_pixel(vec2i(frame % 128, 0), rgb::red);
+		scr.draw_pixel(vec2i(frame % 128, 1), rgb::red);
+		scr.draw_pixel(vec2i(frame % 128 + 1, 0), rgb::red);
+		scr.draw_pixel(vec2i(frame % 128 + 1, 1), rgb::red);
+		//scr.move_to(vec2i(frame*2 % 256, frame % 128));
 		scr.display();
 		//scr2.fast_clear();
 		//scr2.draw_line(vec2i(x * 1.5, x * 0.4), vec2i(x + 1000, x + 500), rgb(255, 170, 0));

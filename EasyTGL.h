@@ -56,6 +56,8 @@ namespace EasyTGL {
 	template <typename T> vector2<T> operator - (const vector2<T>& vec);
 	template <typename T> vector2<T> operator + (const vector2<T>& a, const vector2<T>& b);
 	template <typename T> vector2<T> operator - (const vector2<T>& a, const vector2<T>& b);
+	template <typename T> bool operator == (const vector2<T>& a, const vector2<T>& b);
+	template <typename T> bool operator != (const vector2<T>& a, const vector2<T>& b);
 
 	using vec2i = vector2<int>;
 	using vec2 = vector2<float>;
@@ -268,10 +270,18 @@ namespace EasyTGL {
 		*/
 		void fast_clear();
 
+
+		/*
+		* @brief 移动窗口, 仍以左上角为基准, (1,1)为在终端上的原点
+		* @param pos	视口左上角横坐标(单位 字符); 视口左上角纵坐标(单位 字符/像素, 像素高度固定为1字符, 因此二者在纵坐标上等价)
+		*/
+		void move_to(const vec2i& pos);
+
 	private:
 		string screen_buffer;	///< 视口的输出缓冲区, 绘制像素的控制码输出于此
 		//string text_buffer;	///< 视口的输出缓冲区, 绘制文字的控制码输出于此, 此缓冲区内所有内容将在screen_buffer刷新后处理, 即绘制的文字必定覆盖画面
 		vec2i global_pos;	///< 视口左上角相对于终端左上角的全局位置, 从(1,1)开始
+		vec2i last_global_pos;	///< 上一帧的窗口位置, 用于差量绘制优化
 		int width, height;	///< 视口的宽和高(单位 像素)
 		int pixel_width;	///< 像素的宽度(单位 字符) (像素高度固定为1个字符)
 		char* basic_pixel;	///< 逻辑像素使用的图元(字符串, 默认使用空格作为基本字符)
@@ -356,6 +366,14 @@ namespace EasyTGL {
 	template <typename T> vector2<T> operator - (const vector2<T>& a, const vector2<T>& b)
 	{
 		return a + (-b);
+	}
+	template <typename T> bool operator == (const vector2<T>& a, const vector2<T>& b)
+	{
+		return a.x == b.x and a.y == b.y;
+	}
+	template <typename T> bool operator != (const vector2<T>& a, const vector2<T>& b)
+	{
+		return a.x != b.x or a.y != b.y;
 	}
 
 	template <typename T> vector3<T>::vector3(T _x, T _y, T _z)
@@ -539,62 +557,107 @@ namespace EasyTGL {
 	{
 		screen_buffer.reserve(EASYTGL_DEFAULT_FRAME_BUFFER_SIZE);
 		/*
-		* @brief lambda表达式 绘制像素到屏幕缓冲区
-		* @param x		像素点的横坐标(单位 像素)
-		* @param y		像素点的纵坐标(单位 像素)
-		* @param color	像素点的颜色, 只支持RGB三通道, 不包括alpha通道
+		* @brief lambda表达式 移动终端光标
+		* @param x	像素点的横坐标(单位 像素)
+		* @param y	像素点的纵坐标(单位 像素)
 		*/
-		auto put_pixel = [&](const int& x, const int& y, const rgb& color) -> void
+		auto set_place = [&](const int& x, const int& y) -> void
 			{
-				//printf(
-				//	"\033[%d;%dH\033[48;2;%d;%d;%dm%s",
-				//	y, x,
-				//	color.r, color.g, color.b,
-				//	basic_pixel
-				//);
 				screen_buffer += "\033[";
-				screen_buffer += to_string(y);
+				screen_buffer += to_string(y + global_pos.y);
 				screen_buffer += ";";
-				screen_buffer += to_string(x);
-				screen_buffer += "H\033[48;2;";
+				screen_buffer += to_string(x + global_pos.x);
+				screen_buffer += "H";
+				return;
+			};
+
+		/*
+		* @brief lambda表达式 改变输出(背景)颜色
+		* @param color	目标颜色, 只支持RGB三通道, 不包括alpha通道
+		*/
+		auto set_color = [&](const rgb& color) -> void
+			{
+				screen_buffer += "\033[48;2;";
 				screen_buffer += to_string(color.r);
 				screen_buffer += ";";
 				screen_buffer += to_string(color.g);
 				screen_buffer += ";";
 				screen_buffer += to_string(color.b);
 				screen_buffer += "m";
-				screen_buffer += basic_pixel;
 				return;
 			};
 
 		screen_buffer += "\033[0m";	// 清空输出格式
+		rgb last_color = rgb::white;
+		set_color(last_color);
+		if (abs(global_pos.x - last_global_pos.x) % 2 == 1) all_redraw = true;
+		if (last_global_pos != global_pos) all_redraw = true;
 		if (all_redraw) {
+			/*
+			* @brief lambda表达式 绘制像素到屏幕缓冲区
+			* @param x		像素点的横坐标(单位 像素)
+			* @param y		像素点的纵坐标(单位 像素)
+			* @param color	像素点的颜色, 只支持RGB三通道, 不包括alpha通道
+			* @param last_c	上一像素点的颜色, 用于ASCII控制码优化
+			*/
+			auto put_pixel = [&](const int& x, const int& y, const rgb& color, const rgb& last_c) -> void
+				{
+					if (x==0) set_place(x, y);
+					if(color != last_c) set_color(color);
+					screen_buffer += basic_pixel;
+					return;
+				};
+
 			for (int idx = 0; idx < width * height; idx++) {
-				int x = idx % width;
+				int x = (idx % width) * pixel_width;
 				int y = idx / width;
 				put_pixel(
-					global_pos.x + x * pixel_width,
-					global_pos.y + y,
-					frame_buffer[idx]
+					x, y,
+					frame_buffer[idx],
+					last_color
 				);
+				last_color = frame_buffer[idx];
 			}
 			lastframe_frame_buffer = frame_buffer;
 		}
 		else {
+			/*
+			* @brief lambda表达式 绘制像素到屏幕缓冲区
+			* @param x		像素点的横坐标(单位 像素)
+			* @param y		像素点的纵坐标(单位 像素)
+			* @param color	像素点的颜色, 只支持RGB三通道, 不包括alpha通道
+			* @param last_c	上一像素点的颜色RGB, 用于ASCII控制码优化
+			* @param last_x	上一像素点的横坐标, 用于ASCII控制码优化(单位 像素)
+			* @param last_y	上一像素点的纵坐标, 用于ASCII控制码优化(单位 像素)
+			*/
+			auto put_pixel = [&](const int& x, const int& y, const rgb& color, const rgb& last_c, const int& last_x, const int& last_y) -> void
+				{
+					if (last_x + 1 != x or last_y != x) set_place(x, y);
+					if (color != last_c) set_color(color);
+					screen_buffer += basic_pixel;
+					return;
+				};
+			
+			int last_x = 0;
+			int last_y = 0;
+			set_place(last_x, last_y);
 			vector<int> difference = get_difference();
 			for (int i = 0; i < difference.size(); i++) {
 				int idx = difference[i];
-
-				int x = idx % width;
+				int x = (idx % width) * pixel_width;
 				int y = idx / width;
+
 				put_pixel(
-					global_pos.x + x * pixel_width,
-					global_pos.y + y,
-					frame_buffer[idx]
+					x, y, frame_buffer[idx],
+					last_color, last_x, last_y
 				);
+
+				last_x = x; last_x = y;
+				last_color = frame_buffer[idx];
 				lastframe_frame_buffer[idx] = frame_buffer[idx];
 			}
 		}
+		last_global_pos = global_pos;
 		fwrite(screen_buffer.data(), sizeof(char), screen_buffer.size(), stdout);
 		//fwrite(text_buffer.data(), sizeof(char), text_buffer.size(), stdout);
 		fflush(stdout);
@@ -639,6 +702,11 @@ namespace EasyTGL {
 		memset(frame_buffer.data(), 0x00, sizeof(rgb) * frame_buffer.size());
 		return;
 	}
+	void screen::move_to(const vec2i& pos)
+	{
+		global_pos = pos;
+		return;
+	}
 	float screen::calc_slope(float dx, float dy)
 	{
 		if (dy == 0) return 0;  // 水平线，斜率为0
@@ -664,12 +732,12 @@ namespace EasyTGL {
 		if (p1.y > p2.y) std::swap(p1, p2);
 		if (p1.y > p3.y) std::swap(p1, p3);
 		if (p2.y > p3.y) std::swap(p2, p3);
-		float k1 = calc_slope(p1, p3);
-		float k2 = calc_slope(p1, p2);
-		float k3 = calc_slope(p2, p3);
+		double k1 = calc_slope(p1, p3);
+		double k2 = calc_slope(p1, p2);
+		double k3 = calc_slope(p2, p3);
 
 		//上半部分 从p1到p2 水平扫描线
-		float x_left = p1.x, x_right = p1.x;
+		double x_left = p1.x, x_right = p1.x;
 		for (int y = p1.y; y < p2.y; y++) {
 			draw_hline(y, (int)std::floor(x_left), (int)std::floor(x_right), color);
 			x_left += k2;  // 左边界
@@ -688,7 +756,7 @@ namespace EasyTGL {
 	vector<int> screen::get_difference()
 	{
 		vector<int> result;
-		result.reserve(width * height);
+		result.reserve(width * height + 16);
 		//#pragma omp parallel for num_threads(a)
 		for (int i = 0; i < frame_buffer.size(); i++) {
 			if (i >= lastframe_frame_buffer.size()) {
@@ -696,7 +764,12 @@ namespace EasyTGL {
 				lastframe_frame_buffer.push_back(rgb());
 				continue;
 			}
-			if (frame_buffer[i] != lastframe_frame_buffer[i]) {
+			//int x = i % width;
+			//int y = i / width;
+			//int last_idx = i + ((y - last_global_pos.y) * (width-1) + x + last_global_pos.x);
+			if (//last_idx < 0 or last_idx >= (width -1) * (height-1) or 
+				frame_buffer[i] != lastframe_frame_buffer[i]//last_idx]
+				) {
 				result.push_back(i);
 			}
 		}
