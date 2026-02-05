@@ -14,8 +14,8 @@
 //#ifndef EASYTGL_THREAD_NUM
 //#define EASYTGL_THREAD_NUM 16
 //#endif
-#ifndef EASYTGL_USE_OUTPUT_BUFFER
-#define EASYTGL_USE_OUTPUT_BUFFER true
+#ifndef EASYTGL_USE_256_COLOR_ONLY
+#define EASYTGL_USE_256_COLOR_ONLY false
 #endif
 #ifndef EASYTGL_DEFAULT_MAIN_BUFFER_SIZE
 #define EASYTGL_DEFAULT_MAIN_BUFFER_SIZE 65536*4096
@@ -110,6 +110,7 @@ namespace EasyTGL {
 	inline const rgb rgb::light_yellow = rgb(255, 255, 0);
 	bool operator == (const rgb& a, const rgb& b);
 	bool operator != (const rgb& a, const rgb& b);
+	uint8_t rgb_to_ansi256(const rgb& color);
 
 	/*
 	* @brief 每个像素点RGB的集合, 还包含图像的宽和高
@@ -275,7 +276,7 @@ namespace EasyTGL {
 		* @brief 移动窗口, 仍以左上角为基准, (1,1)为在终端上的原点
 		* @param pos	视口左上角横坐标(单位 字符); 视口左上角纵坐标(单位 字符/像素, 像素高度固定为1字符, 因此二者在纵坐标上等价)
 		*/
-		void move_to(const vec2i& pos);
+		//void move_to(const vec2i& pos);
 
 	private:
 		string screen_buffer;	///< 视口的输出缓冲区, 绘制像素的控制码输出于此
@@ -342,6 +343,51 @@ namespace EasyTGL {
 #ifdef EASYTGL_IMPLEMENTATION
 #undef EASYTGL_IMPLEMENTATION
 namespace EasyTGL {
+
+	struct display_color
+	{
+		union
+		{
+			uint8_t color256;
+			rgb color_rgb;
+		};
+		display_color() = delete;
+		display_color(const rgb& color)
+		{
+			*this = color;
+			return;
+		}
+		bool operator == (const display_color& other) const
+		{
+			if (EASYTGL_USE_256_COLOR_ONLY) return other.color256 == this->color256;
+			return other.color_rgb == this->color_rgb;
+		}
+		bool operator != (const display_color& other) const
+		{
+			return !(*this == other);
+		}
+		void operator = (const display_color& other)
+		{
+			if (EASYTGL_USE_256_COLOR_ONLY) this->color256 = other.color256;
+			else this->color_rgb = other.color_rgb;
+			return;
+		}
+		void operator = (const uint8_t& color)
+		{
+			if (EASYTGL_USE_256_COLOR_ONLY)
+				color256 = color;
+			return;
+		}
+		void operator = (const rgb& color)
+		{
+			if (!EASYTGL_USE_256_COLOR_ONLY)
+				color_rgb = color;
+			else
+				color256 = rgb_to_ansi256(color);
+			return;
+		}
+	};
+
 	template <typename T> vector2<T>::vector2(T _x, T _y)
 	{
 		this->x = _x, this->y = _y;
@@ -412,6 +458,21 @@ namespace EasyTGL {
 	bool operator != (const rgb& a, const rgb& b)
 	{
 		return !(a == b);
+	}
+	uint8_t rgb_to_ansi256(const rgb& color)
+	{
+		const uint8_t& r = color.r, g = color.g, b = color.b;
+		if (r == g and g == b) {
+			if (color.r == 0) return 16;
+			uint8_t gray_idx = (r * 23) / 255;
+			return 232 + gray_idx;
+		}
+		uint8_t ans = 16;
+		// 色立方, 将RGB分别从[0,255]映射到[0,5]
+		ans += (r / 43) * 36;
+		ans += (g / 43) * 6;
+		ans += b / 43;
+		return ans;
 	}
 
 	image::image(int _width, int _height, const vector<rgb>& _data)
@@ -555,6 +616,8 @@ namespace EasyTGL {
 	}
 	void screen::display(bool all_redraw)
 	{
+		display_color last_color(rgb::white);
+
 		screen_buffer.reserve(EASYTGL_DEFAULT_FRAME_BUFFER_SIZE);
 		/*
 		* @brief lambda表达式 移动终端光标
@@ -575,23 +638,31 @@ namespace EasyTGL {
 		* @brief lambda表达式 改变输出(背景)颜色
 		* @param color	目标颜色, 只支持RGB三通道, 不包括alpha通道
 		*/
-		auto set_color = [&](const rgb& color) -> void
+		auto set_color = [&](const display_color& color) -> void
 			{
-				screen_buffer += "\033[48;2;";
-				screen_buffer += to_string(color.r);
-				screen_buffer += ";";
-				screen_buffer += to_string(color.g);
-				screen_buffer += ";";
-				screen_buffer += to_string(color.b);
-				screen_buffer += "m";
+				if (EASYTGL_USE_256_COLOR_ONLY) {
+					// ~11 Byte per Pixel
+					screen_buffer += "\033[48;5;";
+					screen_buffer += to_string(color.color256);
+					screen_buffer += "m";
+				}
+				else {
+					// ~19 Byte per Pixel
+					screen_buffer += "\033[48;2;";
+					screen_buffer += to_string(color.color_rgb.r);
+					screen_buffer += ";";
+					screen_buffer += to_string(color.color_rgb.g);
+					screen_buffer += ";";
+					screen_buffer += to_string(color.color_rgb.b);
+					screen_buffer += "m";
+				}
 				return;
 			};
 
 		screen_buffer += "\033[0m";	// 清空输出格式
-		rgb last_color = rgb::white;
 		set_color(last_color);
-		if (abs(global_pos.x - last_global_pos.x) % 2 == 1) all_redraw = true;
-		if (last_global_pos != global_pos) all_redraw = true;
+		//if (abs(global_pos.x - last_global_pos.x) % 2 == 1) all_redraw = true;
+		//if (last_global_pos != global_pos) all_redraw = true;
 		if (all_redraw) {
 			/*
 			* @brief lambda表达式 绘制像素到屏幕缓冲区
@@ -600,10 +671,11 @@ namespace EasyTGL {
 			* @param color	像素点的颜色, 只支持RGB三通道, 不包括alpha通道
 			* @param last_c	上一像素点的颜色, 用于ASCII控制码优化
 			*/
-			auto put_pixel = [&](const int& x, const int& y, const rgb& color, const rgb& last_c) -> void
+			auto put_pixel = [&](const int& x, const int& y, const display_color& color, const display_color& last_c) -> void
 				{
 					if (x==0) set_place(x, y);
-					if(color != last_c) set_color(color);
+					if (color != last_c)
+						set_color(color);
 					screen_buffer += basic_pixel;
 					return;
 				};
@@ -613,10 +685,10 @@ namespace EasyTGL {
 				int y = idx / width;
 				put_pixel(
 					x, y,
-					frame_buffer[idx],
+					display_color(frame_buffer[idx]),
 					last_color
 				);
-				last_color = frame_buffer[idx];
+				last_color.color_rgb = frame_buffer[idx];
 			}
 			lastframe_frame_buffer = frame_buffer;
 		}
@@ -630,9 +702,9 @@ namespace EasyTGL {
 			* @param last_x	上一像素点的横坐标, 用于ASCII控制码优化(单位 像素)
 			* @param last_y	上一像素点的纵坐标, 用于ASCII控制码优化(单位 像素)
 			*/
-			auto put_pixel = [&](const int& x, const int& y, const rgb& color, const rgb& last_c, const int& last_x, const int& last_y) -> void
+			auto put_pixel = [&](const int& x, const int& y, const display_color& color, const display_color& last_c, const int& last_x, const int& last_y) -> void
 				{
-					if (last_x + 1 != x or last_y != x) set_place(x, y);
+					if (last_x + 1 != x or last_y != y) set_place(x, y);
 					if (color != last_c) set_color(color);
 					screen_buffer += basic_pixel;
 					return;
@@ -648,7 +720,7 @@ namespace EasyTGL {
 				int y = idx / width;
 
 				put_pixel(
-					x, y, frame_buffer[idx],
+					x, y, display_color(frame_buffer[idx]),
 					last_color, last_x, last_y
 				);
 
@@ -702,11 +774,11 @@ namespace EasyTGL {
 		memset(frame_buffer.data(), 0x00, sizeof(rgb) * frame_buffer.size());
 		return;
 	}
-	void screen::move_to(const vec2i& pos)
-	{
-		global_pos = pos;
-		return;
-	}
+	//void screen::move_to(const vec2i& pos)
+	//{
+	//	global_pos = pos;
+	//	return;
+	//}
 	float screen::calc_slope(float dx, float dy)
 	{
 		if (dy == 0) return 0;  // 水平线，斜率为0
@@ -766,12 +838,10 @@ namespace EasyTGL {
 			}
 			//int x = i % width;
 			//int y = i / width;
-			//int last_idx = i + ((y - last_global_pos.y) * (width-1) + x + last_global_pos.x);
+			//int last_idx = i + ((y - last_global_pos.y) * (width-1) + x - last_global_pos.x);
 			if (//last_idx < 0 or last_idx >= (width -1) * (height-1) or 
 				frame_buffer[i] != lastframe_frame_buffer[i]//last_idx]
-				) {
-				result.push_back(i);
-			}
+				) result.push_back(i);
 		}
 		return result;
 	}
